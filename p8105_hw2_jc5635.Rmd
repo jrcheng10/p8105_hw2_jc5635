@@ -14,34 +14,102 @@ library(readxl)
 
 ## Problem 1: NYC Transit
 
+The raw `nyc_transit` dataset contains fields that denote various characteristics associated with New York City subway station entrances, such as `Division`, `Line`, `Station Name`, `Station Location`, `Entrance Location`, `Entrance Type`, and `ADA`.
+
+```{r transit_import}
+nyc_transit = read_csv(file = "data/NYC_Transit_Subway_Entrance_And_Exit_Data.csv") %>%
+  janitor::clean_names() %>%
+  select(line:vending, ada) %>%
+  mutate(entry = ifelse(entry == "YES", TRUE, FALSE))
+```
+
+We proceed to clean variable names; select variables of interest; and convert values on `entry` from `YES` and `NO` to `TRUE` and `FALSE`, respectively. The resulting dataset consists of `r nrow(nyc_transit)` observations on `r ncol(nyc_transit)` variables. The dataset cannot be described as tidy; it is recommended that `pivot_longer()` be applied on the `route1`, `route2`, etc. variables.
+
+```{r transit_stations}
+dist_stations = nyc_transit %>%
+  distinct(station_name, line) %>%
+  count
+
+ada_stations = nyc_transit %>%
+  filter(ada == TRUE) %>%
+  distinct(station_name, line) %>%
+  count
+```
+
+```{r transit_entrances}
+yes_entrance = nyc_transit %>%
+  filter(vending == "NO", entry == TRUE) %>%
+  count
+
+no_vending = nyc_transit %>%
+  filter(vending == "NO") %>%
+  count
+```
+
+There are `r dist_stations` distinct stations, of which `r ada_stations` are ADA-compliant. The share of station entrances/exits without vending that permit entry is approximately `r round(yes_entrance / no_vending, 2)*100` percent.
+
+```{r pivot_data}
+dist_stations_a = nyc_transit %>%
+  mutate_at(c("route8", "route9", "route10", "route11"), as.character) %>%
+  pivot_longer(route1:route11,
+               names_to = "num",
+               values_to = "route") %>%
+  filter(route == "A") %>%
+  distinct(station_name, line) %>%
+  count
+
+ada_stations_a = nyc_transit %>%
+  mutate_at(c("route8", "route9", "route10", "route11"), as.character) %>%
+  pivot_longer(route1:route11,
+               names_to = "num",
+               values_to = "route") %>%
+  filter(route == "A",
+         ada == TRUE) %>%
+  distinct(station_name, line) %>%
+  count
+```
+
+A total of `r dist_stations_a` distinct stations serve the A train, of which `r ada_stations_a` are ADA-compliant.
+
 ## Problem 2: Mr. Trash Wheel
 
+First, we import the Mr. Trash Wheel data as `mr_trash_wheel`, and proceed to clean the data by removing extraneous rows and columns, as well as by setting the values on `sports_balls` as integers, among other steps.
+
 ```{r mr_trash_wheel}
-mr_trash_wheel = read_excel("data/Trash-Wheel-Collection-Totals-7-2020-2.xlsx", sheet = "Mr. Trash Wheel", range = "A2:N533", col_names = TRUE) %>%
+mr_trash_wheel = read_excel("data/Trash Wheel Collection Data.xlsx", sheet = "Mr. Trash Wheel", range = "A2:N549", col_names = TRUE) %>%
   janitor::clean_names() %>%
-  drop_na(dumpster) %>%
+# drop_na(dumpster) %>%
+# no longer necessary with updated data
   mutate(sports_balls = as.integer(sports_balls),
+         year = as.numeric(year),
          trash_wheel_type = "Mister") %>%
   relocate(trash_wheel_type, dumpster)
 
 head(mr_trash_wheel, 5)
 ```
 
+Next, we import the Professor Trash Wheel data as `prof_trash_wheel`, and proceed to clean this data in a largely analogous manner. 
+
 ```{r prof_trash_wheel}
-prof_trash_wheel = read_excel("data/Trash-Wheel-Collection-Totals-7-2020-2.xlsx", sheet = "Professor Trash Wheel", n_max = 113, col_names = TRUE) %>%
+prof_trash_wheel = read_excel("data/Trash Wheel Collection Data.xlsx", sheet = "Professor Trash Wheel", range = "A2:M96", col_names = TRUE) %>%
   janitor::clean_names() %>%
-  drop_na(dumpster) %>%
-  mutate(sports_balls = as.integer(sports_balls),
-         trash_wheel_type = "Professor") %>%
+# drop_na(dumpster) %>%
+# no longer necessary with updated data
+  mutate(trash_wheel_type = "Professor") %>%
   relocate(trash_wheel_type, dumpster)
+# note: in new data, "Professor Trash Wheel" tab no longer contains sports_balls field
 
 head(prof_trash_wheel, 5)
 ```
 
+We then combine `mr_trash_wheel` and `prof_trash_wheel` into a composite dataset, `all_trash_wheel`.
+
 ```{r bind_data}
 all_trash_wheel = bind_rows(mr_trash_wheel, prof_trash_wheel)
 head(all_trash_wheel, 5)
+```
 
+```{r trash_desc}
 prof_trash_weight = all_trash_wheel %>%
   filter(trash_wheel_type == "Professor") %>% 
   pull(weight_tons) %>%
@@ -54,9 +122,11 @@ mr_trash_balls = all_trash_wheel %>%
   sum
 ```
 
-The `all_trash_wheel` dataset contains 524 observations on 15 variables. Key fields in `all_trash_wheel` include `trash_wheel_type` (i.e. denoted as `Mister` or `Professor`) and `dumpster` (i.e. denoted ordinally); temporal fields, such as `date`; fields that quantify the extent of trash, such as `weight_tons` and `volume_cubic_yards`; fields that are counts of particular kinds of trash, such as `plastic_bottles`, `grocery_bags`, and `sports_balls`; and `homes_powered`, an outcome related to trash incineration. Professor Trash Wheel collected a total of `r prof_trash_weight` tons of trash; in 2020, Mr. Trash Wheel collected `r mr_trash_balls` sports balls.
+The `all_trash_wheel` dataset contains `r nrow(all_trash_wheel)` observations on `r ncol(all_trash_wheel)` variables. Key fields in `all_trash_wheel` include `trash_wheel_type` (i.e. denoted as `Mister` or `Professor`) and `dumpster` (i.e. denoted ordinally); temporal fields, such as `date`; fields that quantify the extent of trash, such as `weight_tons` and `volume_cubic_yards`; fields that are counts of particular kinds of trash, such as `plastic_bottles`, `grocery_bags`, and `sports_balls`; and `homes_powered`, an outcome related to trash incineration. Professor Trash Wheel collected a total of `r prof_trash_weight` tons of trash; in 2020, Mr. Trash Wheel collected `r mr_trash_balls` sports balls.
 
 ## Problem 3: FiveThirtyEight
+
+We import the `pols-month.csv` file (i.e. as `pols`) and clean the data by disaggregating `mon` into separate fields, recoding the `month` field, and replacing `prez_dem` and `prez_gop` fields with `president`, among other steps.
 
 ```{r pols}
 pols = read_csv(file = "data/pols-month.csv") %>%
@@ -68,15 +138,22 @@ pols = read_csv(file = "data/pols-month.csv") %>%
 head(pols, 5)
 ```
 
+We import the `snp.csv` file (i.e. as `snp`) and perform analogous cleaning steps. We additionally tidy the `year` values and re-order columns. 
+
 ```{r snp}
 snp = read_csv(file = "data/snp.csv") %>%
   separate(date, into = c("month", "day", "year"), sep = "/", convert = TRUE) %>% 
   mutate(month = month.abb[month],
          year = as.integer(ifelse(year < 16, year + 2000, year + 1900))) %>%
-  select(-day)
+  select(year, month, close, -day)
+# notes: 
+# (1) run month = month.abb[month] to match pols data
+# (2) apply as.integer() on "year" for datatype consistency across FiveThirtyEight datasets
 
 head(snp, 5)
 ```
+
+We import the `unemployment.csv` file (i.e. as `unemployment`), pivot columns of interest to long format, and tidy the `year` field.
 
 ```{r unemployment}
 unemployment = read_csv("data/unemployment.csv") %>%
@@ -89,9 +166,11 @@ unemployment = read_csv("data/unemployment.csv") %>%
 head(unemployment, 5)
 ```
 
+Finally, we join the cleaned `pols`, `snp`, and `unemployment` datasets as `all`.
+
 ```{r join_data}
 all = full_join(pols, snp, by = c("year", "month")) %>%
   full_join(., unemployment, by = c("year", "month"))
 ```
 
-The `pols` dataset shows counts of Democrats and Republicans various holding elected offices of interest (e.g. `gov_gop`, `sen_dem`), and the president's party affiliation (i.e. `president`). The `snp` dataset consists of closing values of the Standard & Poor's index (i.e. `close`). The `unemployment` dataset reports the percentage of unemployment in the United States (i.e. `rate`). The resulting `all` dataset, a composite of the `pols`, `snp`, and `unemployment` datasets, contains `r nrow(all)` observations on `r ncol(all)` variables. The range in `years` in the `all` dataset is 1947 through 2015. Key variables in `all` include temporal fields (i.e. `year` and `month`), as well as those variables previously listed. 
+The `pols` dataset shows counts of Democrats and Republicans various holding elected offices of interest (e.g. `gov_gop`, `sen_dem`), and the president's party affiliation (i.e. `president`). The `snp` dataset displays closing values of the Standard & Poor's index (i.e. `close`). The `unemployment` dataset reports the percentage of unemployment in the United States (i.e. `rate`). The resulting `all` dataset, a composite of the `pols`, `snp`, and `unemployment` datasets, contains `r nrow(all)` observations on `r ncol(all)` variables. The range in `years` in the `all` dataset is 1947 through 2015. Key variables in `all` include temporal fields (i.e. `year` and `month`), as well as the specific variables referenced above from the three constituent datasets. 
